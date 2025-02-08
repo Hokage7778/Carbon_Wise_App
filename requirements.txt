@@ -1,0 +1,6 @@
+streamlit
+firebase-admin
+Pillow
+huggingface-hub
+langchain
+langchain-community
