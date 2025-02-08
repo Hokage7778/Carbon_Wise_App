@@ -13,21 +13,26 @@ from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 
 # ------------------------------------------------------------------
-# Firebase Initialization (using secrets)
+# Configuration using Streamlit Secrets
+# Ye values aapke Streamlit secrets se load hongi.
+firebase_credentials = st.secrets["firebase"]
+HF_API_KEY = st.secrets["HF_API_KEY"]
+databaseURL = st.secrets["databaseURL"]
+
+# ------------------------------------------------------------------
+# Firebase Initialization
 def initialize_firebase():
     if not firebase_admin._apps:
         try:
-            # Load the service account credentials from Streamlit secrets
-            creds_json = json.loads(st.secrets["SERVICE_ACCOUNT"])
-            cred = credentials.Certificate(creds_json)
+            cred = credentials.Certificate(firebase_credentials)
             firebase_admin.initialize_app(cred, {
-                'databaseURL': st.secrets["DATABASE_URL"]
+                'databaseURL': databaseURL
             })
             return True
         except Exception as e:
             st.error(f"Failed to initialize Firebase: {str(e)}")
-            return False  # Initialization failed
-    return True  # Already initialized
+            return False
+    return True
 
 # ------------------------------------------------------------------
 # Helper function to safely rerun the app
@@ -94,7 +99,7 @@ def encode_image(image_path):
 
 def describe_image(image_path):
     try:
-        client = InferenceClient(api_key=st.secrets["HF_API_KEY"])  # Use secret
+        client = InferenceClient(api_key=HF_API_KEY)
         image_b64 = encode_image(image_path)
         messages = [
             {
@@ -175,7 +180,7 @@ Image Description:
         )
         llm = HuggingFaceHub(
             repo_id="Qwen/Qwen2.5-72B-Instruct",
-            huggingfacehub_api_token=st.secrets["HF_API_KEY"]  # Use secret
+            huggingfacehub_api_token=HF_API_KEY
         )
         chain = LLMChain(llm=llm, prompt=prompt)
         response = chain.run(vision_output)
