@@ -3,7 +3,6 @@ import firebase_admin
 from firebase_admin import credentials, auth, db
 from PIL import Image
 import base64
-import json
 import os
 import re
 from datetime import datetime
@@ -12,14 +11,15 @@ from langchain_community.llms import HuggingFaceHub
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Configuration using Streamlit Secrets
-# Ye values aapke Streamlit secrets se load hongi.
+# (This code expects HF_API_KEY and databaseURL to be defined as top-level keys
+# and Firebase credentials under the [firebase] table in your secrets.)
 firebase_credentials = st.secrets["firebase"]
 HF_API_KEY = st.secrets["HF_API_KEY"]
 databaseURL = st.secrets["databaseURL"]
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Firebase Initialization
 def initialize_firebase():
     if not firebase_admin._apps:
@@ -34,15 +34,15 @@ def initialize_firebase():
             return False
     return True
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Helper function to safely rerun the app
 def rerun_app():
     try:
         st.experimental_rerun()
-    except AttributeError:
+    except Exception:
         st.stop()
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Function to fetch and aggregate CO₂ savings from Firebase for the logged-in user
 def get_co2_summary(user_uid):
     summary = {"Today": 0, "This Week": 0, "This Month": 0, "This Year": 0, "Overall": 0}
@@ -73,7 +73,7 @@ def get_co2_summary(user_uid):
         print("Error fetching CO2 summary:", e)
         return summary
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Function to generate trivia based on overall CO₂ savings
 def generate_trivia(overall_co2):
     trees = overall_co2 / 22.0
@@ -91,7 +91,7 @@ def generate_trivia(overall_co2):
     )
     return trivia
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Image Processing Functions
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -126,7 +126,7 @@ def describe_image(image_path):
     except Exception as e:
         return f"Error analyzing image: {str(e)}"
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Helper to clean irrelevant information from Vision API output
 def clean_vision_output(text):
     irrelevant_keywords = ["job postings", "implementation assistant", "junior consultant", "SRE"]
@@ -134,7 +134,7 @@ def clean_vision_output(text):
     cleaned = [line for line in lines if not any(keyword.lower() in line.lower() for keyword in irrelevant_keywords)]
     return "\n".join(cleaned)
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Function to calculate CO₂ savings based on extracted metrics
 def calculate_co2_savings(activity_type, metrics):
     try:
@@ -154,7 +154,7 @@ def calculate_co2_savings(activity_type, metrics):
         print(f"CO₂ calculation error: {str(e)}")
         return 0
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Main processing function using LLM for extraction and fallback regex as needed.
 def process_with_langchain(vision_output):
     try:
@@ -304,7 +304,7 @@ Image Description:
             "co2_savings": 0
         }
 
-# ------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Dashboard Display (with Firebase integration)
 def show_dashboard():
     with st.sidebar:
@@ -318,7 +318,6 @@ def show_dashboard():
     st.title("📊 CarbonWise")
     st.markdown("Upload an image to analyze eco-friendly activities and track your CO₂ savings.")
 
-    # Display CO₂ savings summary.
     if st.session_state.user:
         summary = get_co2_summary(st.session_state.user["uid"])
         cols = st.columns(5)
@@ -334,22 +333,17 @@ def show_dashboard():
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", use_container_width=True)
-
         temp_image_path = "temp_image.jpg"
         image.save(temp_image_path)
-
         st.info("⏳ Analyzing image... Please wait.")
         vision_output = describe_image(temp_image_path)
         if "Error" in vision_output:
             st.error(vision_output)
             return
 
-        # Clean the Vision API output.
         vision_output_clean = clean_vision_output(vision_output)
-
         st.markdown("### 📝 Image Description")
         st.write(vision_output_clean)
-
         activity_details = process_with_langchain(vision_output)
         st.markdown("### 📊 Activity Details")
         col1, col2 = st.columns(2)
@@ -371,14 +365,9 @@ def show_dashboard():
                 st.write(f"**Duration:** {activity_details['time_duration']} minutes")
             if activity_details['source'] and activity_details['destination']:
                 st.write(f"**Route:** {activity_details['source']} to {activity_details['destination']}")
-
-        # --- Key Change: Display CO₂ Savings with one decimal place ---
         st.metric("CO₂ Savings", f"{activity_details['co2_savings']:.1f} kg")
-
         if activity_details['additional_notes']:
             st.info(f"📌 **Additional Notes:** {activity_details['additional_notes']}")
-
-        # Save activity to Firebase.
         if st.session_state.user:
             ref = db.reference(f'users/{st.session_state.user["uid"]}/activities')
             ref.push({
@@ -388,12 +377,11 @@ def show_dashboard():
             })
             st.success("✅ Activity logged successfully!")
             rerun_app()
-
         if os.path.exists(temp_image_path):
             os.remove(temp_image_path)
 
-# ------------------------------------------------------------------
-# Main Function with Authentication and Dashboard routing
+# ------------------------------------------------------------------------------
+# Main Function with Authentication and Dashboard Routing
 def main():
     st.set_page_config(page_title="CarbonWise", page_icon="🌱", layout="centered")
     st.markdown(
@@ -408,7 +396,6 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Initialize session state.
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user = None
@@ -419,12 +406,10 @@ def main():
         st.error("Firebase initialization failed.")
         return
 
-    # If logged in, show the dashboard.
     if st.session_state.logged_in:
         show_dashboard()
         return
 
-    # Authentication Page
     with st.container():
         st.markdown("<h1 style='text-align: center;'>CarbonWise</h1>", unsafe_allow_html=True)
         st.markdown("<hr>", unsafe_allow_html=True)
